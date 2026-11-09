@@ -7,6 +7,10 @@ arch:
   - armhf
   - armv7
   - aarch64
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "Web interface port"
 startup: application
 boot: auto
 options:
