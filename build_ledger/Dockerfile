@@ -4,10 +4,15 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
+COPY www/server.py /app/server.py
 COPY www/ /app/www/
+COPY run.sh /run.sh
+
+RUN chmod a+x /run.sh
 
 EXPOSE 8099
 
-CMD ["python3", "server.py"]
+CMD ["/run.sh"]
