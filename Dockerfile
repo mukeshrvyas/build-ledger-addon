@@ -1,12 +1,12 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /local_apps/build-ledger
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY www/ /app/
+COPY www/ /local-apps/build-ledger/
 
 EXPOSE 8099
 
