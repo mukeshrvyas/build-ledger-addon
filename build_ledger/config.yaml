@@ -7,6 +7,8 @@ arch:
   - armhf
   - armv7
   - aarch64
+map:
+  - config:rw
 ports:
   8099/tcp: 8099
 ports_description:
