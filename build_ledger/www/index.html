@@ -459,9 +459,8 @@ async function loadSqljs(){
   return _sqlDb;
 }
 async function ensureSqlDb(){
-  const sql=await loadSqljs();
-  if(!_sqlDb){_sqlDb=await new Promise(res=>sql(res))}
-  return _sqlDb
+  await loadSqljs();
+  return _sqlDb;
 }
 async function initSqlStorage(){
   if(SQL_READY)return;

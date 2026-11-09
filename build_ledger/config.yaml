@@ -1,5 +1,5 @@
 name: Build Ledger
-version: "1.0.0"
+version: "1.0.1"
 slug: build_ledger
 description: "End-to-end encrypted cost tracker for art/woodwork builds"
 arch:
