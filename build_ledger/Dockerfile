@@ -11,7 +11,7 @@ COPY www/server.py /app/server.py
 COPY www/ /app/www/
 COPY run.sh /run.sh
 
-RUN chmod a+x /run.sh
+RUN sed -i 's/\r$//' /run.sh && chmod a+x /run.sh
 
 EXPOSE 8099
 
