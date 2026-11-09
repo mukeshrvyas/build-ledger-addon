@@ -445,52 +445,20 @@ function dropDocs(f){db.docs.filter(f).forEach(d=>blobDel(d.id).catch(()=>{}));d
 
 /* ---------- scan details from a photo (free, in-browser OCR) ---------- */
 const loadOcr=()=>window.Tesseract?Promise.resolve():new Promise((res,rej)=>{const e=document.createElement('script');e.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';e.onload=res;e.onerror=rej;document.head.append(e)});
-let _sqlReady=false,_sqlDb=null;
-async function loadSqljs(){
-  if(window.initSqlJs)return window.initSqlJs;
-  if(_sqlReady)return _sqlDb;
-  _sqlReady=true;
-  const sqlJs=await new Promise((res,rej)=>{
-    const s1=document.createElement('script');s1.src='https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.min.js';
-    s1.onload=()=>res(window.initSqlJs);s1.onerror=rej;document.head.append(s1)
-  });
-  const wasm=await fetch('https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.wasm').then(r=>r.arrayBuffer());
-  _sqlDb=await sqlJs({wasmBinary:wasm});
-  return _sqlDb;
-}
-async function ensureSqlDb(){
-  await loadSqljs();
-  return _sqlDb;
-}
-async function initSqlStorage(){
-  if(SQL_READY)return;
-  const db=await ensureSqlDb();
-  db.run(`CREATE TABLE IF NOT EXISTS vault (key TEXT PRIMARY KEY, value TEXT, updated_at REAL)`);
-  db.run(`CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)`);
-  SQL_DB=db;SQL_READY=true;
-  const lsVault=localStorage.getItem(VK);
-  if(lsVault){
-    try{await sqlSaveVault(lsVault);localStorage.removeItem(VK);}catch(e){}
-  }
-}
+async function initSqlStorage(){SQL_READY=true}
 async function sqlSaveVault(vaultJson){
-  if(!SQL_READY)await initSqlStorage();
-  SQL_DB.run(`INSERT OR REPLACE INTO vault (key, value, updated_at) VALUES ('main', ?, ?)`,[vaultJson,Date.now()]);
+  localStorage.setItem(VK,vaultJson);
 }
 async function sqlLoadVault(){
-  if(!SQL_READY)await initSqlStorage();
-  const row=SQL_DB.prepare(`SELECT value FROM vault WHERE key='main'`).get();
-  return row?row.value:null;
+  return localStorage.getItem(VK);
 }
 async function sqlGet(k){
-  if(!SQL_READY)await initSqlStorage();
-  const row=SQL_DB.prepare(`SELECT value FROM kv WHERE key=?`).get([k]);
-  return row?row.value:null;
+  return localStorage.getItem('bl.kv.'+k);
 }
 async function sqlSet(k,v){
-  if(!SQL_READY)await initSqlStorage();
-  SQL_DB.run(`INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)`,[k,v]);
+  localStorage.setItem('bl.kv.'+k,v);
 }
+
 
 /* ---------- sync queue (local-first, server second) ----------*/
 async function syncPush(){
@@ -688,7 +656,7 @@ function showSetup(legacy){
     msg.textContent='Encrypting your data…';
     try{let d=fresh();if(legacy){try{d=JSON.parse(legacy)}catch(_){}}
       KEY=await newDek();const salt=rnd(16);META={salt,iter:ITER,pw:await wrapDek(await kek(a,salt,ITER),KEY),rs:null};
-      AUTH={totp:null,rec:[],auto:5,user:u||null,authHash:sha(a),pw:a};db=d;norm();await flush();
+      AUTH={totp:null,rec:[],auto:5,user:u||null,authHash:await sha(a),pw:a};db=d;norm();await flush();
       SYNC_URL=s||null;SYNC_ONLINE=!!s;if(u&&s){enqueueSync({op:'register',ts:Date.now()})}
       if(!await sqlLoadVault())throw new Error('save');await migrateBlobs();localStorage.removeItem(K);afterAuth()}
     catch(err){KEY=null;msg.textContent='Something went wrong. Please try again.'}}
@@ -704,10 +672,10 @@ function showLogin(){
     try{const v=JSON.parse(await sqlLoadVault());let o;
       if(v.v==2){const old=await deriveKey(pw,unb64(v.salt),v.iter);o=JSON.parse(TD.decode(await unaes(old,unb64(v.iv),unb64(v.ct),'vault')));
         KEY=await newDek();const salt=rnd(16);META={salt,iter:ITER,pw:await wrapDek(await kek(pw,salt,ITER),KEY),rs:null};
-        db=o.db;AUTH=o.auth||{totp:null,rec:[],auto:5,user:null,authHash:sha(pw),pw};norm();await flush();
+        db=o.db;AUTH=o.auth||{totp:null,rec:[],auto:5,user:null,authHash:await sha(pw),pw};norm();await flush();
         for(const d of db.docs){const r=await tx('readonly',s=>s.get(d.id)).catch(()=>null);if(r&&r.iv)await blobPut(d.id,new Blob([await unaes(old,r.iv,r.ct,d.id)],{type:r.type}))}}
       else{META=metaOf(v);const dek=await unwrapDek(await kek(pw,META.salt,META.iter),META.pw.iv,META.pw.wk);
-        o=JSON.parse(TD.decode(await unaes(dek,unb64(v.iv),unb64(v.ct),'vault')));KEY=dek;db=o.db;AUTH=o.auth||{totp:null,rec:[],auto:5,user:null,authHash:sha(pw),pw};norm()}
+        o=JSON.parse(TD.decode(await unaes(dek,unb64(v.iv),unb64(v.ct),'vault')));KEY=dek;db=o.db;AUTH=o.auth||{totp:null,rec:[],auto:5,user:null,authHash:await sha(pw),pw};norm()}
       SYNC_URL=s||null;SYNC_ONLINE=!!s;
       if(AUTH.totp?.on)show2fa();else{passed();afterAuth()}}
     catch(err){KEY=null;META=null;failed();const w2=wait();msg.textContent=w2?`Wrong password. Too many attempts, wait ${w2} seconds.`:'Wrong password.';$('#p1').value=''}}
