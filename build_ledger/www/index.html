@@ -411,6 +411,113 @@ function booksView(a){
   a.innerHTML=`<div class="row"><h1>Books</h1>${add}</div><div class="btns">${tabs.map(([k,l])=>`<button class="${t==k?'':'g'}" onclick="S.sub='${k}';render()">${l}</button>`).join('')}</div>`+(list||'<p class="mu">Nothing here yet. Invoices are created from a project page.</p>');
 }
 
+/* ---------- reports & views ---------- */
+const REP={type:'sales',from:today().slice(0,8)+'01',to:today(),vid:'',cid:'',st:''};
+function repData(r){
+  const f=r.from||'0000-00-00',t=r.to||'9999-99-99',ok=d=>d>=f&&d<=t,T=r.type,by=(x,y)=>x[0].localeCompare(y[0]);
+  if(T=='sales')return{title:'Sales and invoices',head:['Date','Invoice','Customer','Project','Total','GST','Cost','Profit (ex GST)','Status'],mc:[4,5,6,7],sm:[4,5,6,7],
+    rows:db.bills.filter(b=>ok(b.date)&&(!r.cid||b.cid==r.cid)&&(!r.st||st(b)==r.st)).map(b=>[b.date,b.no,b.customer||'',P(b.pid)?.name||'',b.price,b.gst||0,b.cost,(b.net??b.price)-b.cost,st(b)]).sort(by)};
+  if(T=='pv'){const rows=[];db.purchases.filter(p=>ok(p.date)&&(!r.vid||p.vid==r.vid)).forEach(p=>p.lines.forEach(l=>rows.push([p.date,V(p.vid)?.name||'',p.inv||'',l.desc,l.iid?r4(l.qty)+' '+l.unit:'',l.net??l.price,l.gst||0,l.total??l.price])));
+    return{title:'Purchases from vendors',head:['Date','Vendor','Invoice','Item','Qty','Net','GST','Total'],mc:[5,6,7],sm:[5,6,7],rows:rows.sort(by)}}
+  if(T=='gst'){const c=db.bills.filter(b=>ok(b.date)).reduce((q,b)=>q+(b.gst||0),0),p=db.purchases.filter(x=>ok(x.date)).reduce((q,x)=>q+pGst(x),0);
+    return{title:'GST summary',head:['Item','Amount'],mc:[1],sm:[],rows:[['GST collected on sales',c],['GST paid on purchases',p],[c>=p?'Net GST payable':'Net GST refundable',Math.abs(c-p)]]}}
+  if(T=='cs'){const g={};db.bills.filter(b=>ok(b.date)).forEach(b=>{const k=b.cid||b.customer||'-',e=g[k]=g[k]||{n:C(b.cid)?.name||b.customer||'No customer',c:0,t:0,p:0};e.c++;e.t+=b.price;if(st(b)=='Paid')e.p+=b.price});
+    return{title:'Customer summary',head:['Customer','Invoices','Billed','Paid','Outstanding'],mc:[2,3,4],sm:[1,2,3,4],rows:Object.values(g).map(e=>[e.n,e.c,e.t,e.p,e.t-e.p])}}
+  if(T=='cd'||T=='vd'){const L=T=='cd'?db.customers:db.vendors;
+    return{title:T=='cd'?'Customer details':'Vendor details',head:['Name','Contact','Mobile','Phone','Email','Website','Alt contact','Alt phone','Alt email','Address','Tax no.','Account no.','Terms'],mc:[],sm:[],
+      rows:L.map(c=>[c.name,c.contact,c.mobile,c.phone,c.email,c.website,c.altname,c.altphone,c.altemail,[(c.address||'').replace(/\s*\n\s*/g,', '),c.city,c.state,c.postcode,c.country].filter(Boolean).join(' '),c.taxid,c.acct,c.terms].map(x=>x||''))}}
+  if(T=='pp')return{title:'Project profit',head:['Project','Status','Cost','Invoiced (ex GST)','Profit'],mc:[2,3,4],sm:[2,3,4],rows:db.projects.map(p=>{const c=pCost(p.id),i=db.bills.filter(b=>b.pid==p.id).reduce((q,b)=>q+(b.net??b.price),0);return[p.name,p.status,c,i,i-c]})};
+  if(T=='si')return{title:'Balance stock by item',head:['Item','On hand','Lots','Average cost','Value'],mc:[3,4],sm:[4],rows:db.items.filter(i=>iq(i)>0).map(i=>[i.name,r4(iq(i))+' '+i.unit,i.lots.filter(l=>l.rem>0).length,ival(i)/iq(i),ival(i)])};
+  const rows=[];db.items.forEach(i=>i.lots.filter(l=>l.rem>0).forEach(l=>rows.push([i.name,l.date||'Earlier',V(l.vid)?.name||'',l.inv||'',r4(l.rem)+' '+i.unit,l.uc,l.rem*l.uc])));
+  return{title:'Balance stock by lot',head:['Item','Purchased','Vendor','Invoice','On hand','Unit cost','Value'],mc:[5,6],sm:[6],rows:rows.sort(by)};
+}
+function repView(a){
+  const r=REP,d=repData(r),T=r.type,dt=['sales','cs','pv','gst'].includes(T);
+  const types=[['sales','Sales and invoices'],['gst','GST summary'],['cs','Customer summary'],['cd','Customer details'],['pv','Purchases from vendors'],['vd','Vendor details'],['pp','Project profit'],['sv','Balance stock (by lot)'],['si','Balance stock (by item)']];
+  const opt=(list,cur,all)=>'<option value="">'+all+'</option>'+list.map(x=>'<option value="'+x[0]+'" '+(x[0]==cur?'selected':'')+'>'+esc(x[1])+'</option>').join('');
+  const cell=(v,i)=>d.mc.includes(i)?m(v):esc(v),num=i=>d.mc.includes(i)?' style="text-align:right"':'';
+  a.innerHTML='<h1>Reports</h1><div class="card"><label for="r1">Report</label><select id="r1" onchange="REP.type=this.value;render()">'+types.map(([k,l])=>'<option value="'+k+'" '+(k==T?'selected':'')+'>'+l+'</option>').join('')+'</select>'+
+  (dt?'<div class="row"><div style="flex:1"><label for="r2">From</label><input id="r2" type="date" value="'+r.from+'" onchange="REP.from=this.value;render()"></div><div style="flex:1"><label for="r3">To</label><input id="r3" type="date" value="'+r.to+'" onchange="REP.to=this.value;render()"></div></div>':'')+
+  (T=='pv'?'<label for="r4">Vendor</label><select id="r4" onchange="REP.vid=this.value;render()">'+opt(db.vendors.map(v=>[v.id,v.name]),r.vid,'All vendors')+'</select>':'')+
+  (T=='sales'?'<label for="r5">Customer</label><select id="r5" onchange="REP.cid=this.value;render()">'+opt(db.customers.map(v=>[v.id,v.name]),r.cid,'All customers')+'</select><label for="r6">Status</label><select id="r6" onchange="REP.st=this.value;render()">'+opt([['Paid','Paid'],['Unpaid','Unpaid']],r.st,'Paid and unpaid')+'</select>':'')+'</div>'+
+  '<div id="rep" class="rc"><b>'+esc(d.title)+'</b>'+(dt?'<div class="mu">'+esc(r.from)+' to '+esc(r.to)+'</div>':'')+'<div style="overflow-x:auto;margin-top:8px"><table>'+
+  '<tr>'+d.head.map((h,i)=>'<th'+num(i)+'>'+h+'</th>').join('')+'</tr>'+
+  (d.rows.map(x=>'<tr>'+x.map((v,i)=>'<td'+num(i)+'>'+cell(v,i)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="'+d.head.length+'" class="mu">No records for these filters.</td></tr>')+
+  (d.sm.length&&d.rows.length?'<tr>'+d.head.map((h,i)=>'<td'+num(i)+'><b>'+(i==0?'Total':d.sm.includes(i)?cell(d.rows.reduce((q,x)=>q+x[i],0),i):'')+'</b></td>').join('')+'</tr>':'')+'</table></div></div>'+
+  '<div class="btns"><button onclick="csvOut()">Export CSV</button><button class="g" onclick="prRep()">Print</button></div>';
+}
+function csvOut(){const d=repData(REP),q=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  const t=[d.head,...d.rows].map(r=>r.map(q).join(',')).join('\n');
+  download(new Blob([t],{type:'text/csv'}),'report-'+REP.type+'-'+today()+'.csv')}
+function prRep(){document.body.classList.add('rp');addEventListener('afterprint',()=>document.body.classList.remove('rp'),{once:true});print()}
+function render(){
+  if(!KEY)return;
+  const a=$('#app');
+  $('#nav').innerHTML=[['list','Projects'],['stock','Stock'],['tools','Tools'],['books','Books'],['rep','Reports'],['more','More']].map(([k,l])=>'<button class="'+((({proj:'list',vend:'books',cust:'books',purch:'books'})[S.v]||S.v)==k?'on':'')+'" onclick="go(\''+k+'\')">'+l+'</button>').join('');
+  if(S.v=='list')a.innerHTML='<div class="row"><h1>Projects</h1><button onclick="projForm()">New project</button></div>'+
+    (db.projects.map(p=>'<div class="card tap" onclick="go(\'proj\',\''+p.id+'\')"><div class="row"><b>'+esc(p.name)+'</b><b>'+m(pCost(p.id))+'</b></div>'+
+      '<div class="mu">'+esc(p.status)+(p.ref?' · '+esc(p.ref):'')+'</div>'+(p.tags||'').split(',').filter(t=>t.trim()).map(t=>'<span class="chip">'+esc(t.trim())+'</span>').join('')+'</div>').join('')
+      ||'<p class="mu">No projects yet. Create one to start tracking its build cost.</p>');
+  else if(S.v=='proj')projView(a);
+  else if(S.v=='stock')a.innerHTML='<div class="row"><h1>Stock</h1><div class="btns" style="margin:0"><button class="g" onclick="mergeItems()">Merge</button><button onclick="itemForm()">New item</button></div></div>'+
+    (db.items.map(i=>{const tq=i.lots.reduce((a,l)=>a+l.qty,0),pc=Math.max(0,Math.min(100,iq(i)/(tq||1)*100)),ls=i.lots.filter(l=>l.rem>0),low=i.min>0&&iq(i)<i.min;
+      return '<div class="card tap'+(low?' low':'')+'" onclick="itemSheet(\''+i.id+'\')"><div class="row"><b>'+esc(i.name)+'</b><span>'+r4(iq(i))+' '+esc(i.unit)+'</span></div>'+
+      (ls.map(l=>'<div class="mu">'+esc(l.date||'Earlier')+' · '+r4(l.rem)+' '+esc(i.unit)+' @ '+m(l.uc)+'</div>').join('')||'<div class="mu">Out of stock</div>')+
+      '<div class="mu">Worth '+m(ival(i))+(low?' · Low stock':'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></div>'}).join('')
+      ||'<p class="mu">Add what you buy in bulk (screws, glue, finish). Usage on projects will deduct from here.</p>');
+  else if(S.v=='tools')a.innerHTML='<div class="row"><h1>Tools</h1><button onclick="toolForm()">New tool</button></div>'+
+    (db.tools.map(t=>{const pc=Math.min(100,t.used/t.life*100),par=t.parent&&db.tools.find(x=>x.id==t.parent);
+      return '<div class="card tap" onclick="toolForm(db.tools.find(x=>x.id==\''+t.id+'\'))"><div class="row"><b>'+esc(t.name)+'</b><span>'+m(t.rate)+' / '+esc(t.unit)+'</span></div>'+
+      '<div class="mu">'+(par?'Accessory of '+esc(par.name)+(t.auto>0?' (auto '+r4(t.auto)+' per unit)':''):'')+(par?' · ':'')+m(t.price)+' bought · '+r4(t.used)+' of '+r4(t.life)+' '+esc(t.unit)+' used</div><div class="bar"><i style="width:'+pc+'%'+(t.used>t.life?';background:var(--wn)':'')+'"></i></div></div>'}).join('')
+      ||'<p class="mu">Add tools and accessories you reuse across builds. Each use charges a share of the purchase price to the project.</p>');
+  else if(S.v=='books')booksView(a);else if(S.v=='vend')vendView(a);else if(S.v=='cust')custView(a);else if(S.v=='purch')purchView(a);else if(S.v=='rep')repView(a);
+  else a.innerHTML='<h1>More</h1>'+
+    '<div class="card"><label for="s1">Business name on receipts</label><input id="s1" value="'+esc(db.set.biz)+'">'+
+    '<label for="s4">Business details on invoices (address, ABN, phone)</label><textarea id="s4" rows="3">'+esc(db.set.info)+'</textarea>'+
+    '<label for="s2">Invoice number prefix</label><input id="s2" value="'+esc(db.set.prefix)+'" maxlength="6">'+
+    '<label for="s5">GST rate (%) used as the default on invoices</label><input id="s5" type="number" step="any" value="'+(db.set.gst??10)+'">'+
+    '<label for="s3">Currency symbol</label><input id="s3" value="'+esc(db.set.cur)+'" maxlength="3">'+
+    '<div class="btns"><button onclick="saveSet()">Save settings</button></div></div>'+
+    (SYNC_URL||AUTH?.user?'<div class="card"><b>Server sync</b><div class="row" style="margin-top:6px"><span>Status</span><b>'+(SYNC_ONLINE?'Connected':'Offline / local')+'</b></div>'+
+    (AUTH?.user?'<div class="row"><span>Sync username</span><b>'+esc(AUTH.user)+'</b></div>':'')+
+    (SYNC_URL?'<div class="mu">Server: '+esc(SYNC_URL)+'</div>':'')+
+    '<div class="btns"><button class="g" onclick="syncNow().then(r=>toast(r?.ok?\'Synced with server\':\'Sync failed: \'+(r?.reason||\'check server URL\')))">Sync now</button></div></div>':'')+
+    '<div class="card"><b>Security</b><div class="mu">Everything on this device is encrypted with AES-256-GCM. Your password (PBKDF2-SHA-256, 600,000 rounds) unlocks a random data key, and your recovery key can unlock it too if you forget the password.</div>'+
+    '<div class="row" style="margin-top:8px"><span>Two-factor authentication</span><b>'+(AUTH?.totp?.on?'On':'Off')+'</b></div>'+
+    '<div class="row"><span>Recovery key</span><b>'+(META?.rs?'Set up':'Not set')+'</b></div>'+
+    '<div class="btns"><button onclick="'+(AUTH?.totp?.on?'twofaOff()':'twofaOn()')+'">'+(AUTH?.totp?.on?'Turn off two-factor':'Turn on two-factor')+'</button><button class="g" onclick="pwForm()">Change password</button><button class="g" onclick="recoveryNew()">New recovery key</button><button class="g" onclick="lock()">Lock now</button></div>'+
+    '<label for="al">Lock automatically after</label><select id="al" onchange="AUTH.auto=+this.value;save();toast(\'Saved\')">'+[1,5,15,30].map(x=>'<option value="'+x+'" '+(x==(AUTH?.auto||5)?'selected':'')+'>'+x+' minute'+(x>1?'s':'')+' idle</option>').join('')+'</select></div>'+
+    '<div class="card"><p class="mu">Data, documents and photos are stored encrypted on this device. The encrypted export includes everything plus the app code, so you can import it on another server or device.</p>'+
+    '<div class="btns"><button onclick="exportEnc()">Export everything (encrypted)</button><button class="g" onclick="exportPlain()">Plain zip (not encrypted)</button><button class="g" onclick="$(\'#imp\').click()">Import backup</button></div>'+
+    '<input id="imp" type="file" accept=".zip,.json,.blx,application/zip,application/json" hidden onchange="imp(this.files[0])"></div>';
+}
+function projView(a){
+  const p=P(S.id);if(!p)return go('list');
+  const cost=pCost(p.id),price=cost*(1+p.margin/100);
+  const rows=[...db.uses.filter(u=>u.pid==p.id).map(u=>({k:'u',id:u.id,d:u.date,t:(I(u.iid)?.name||'Item')+' × '+r4(u.qty)+' '+(I(u.iid)?.unit||''),s:'From stock',a:u.cost})),
+    ...db.costs.filter(c=>c.pid==p.id).map(c=>({k:'c',id:c.id,d:c.date,t:c.desc,s:c.cat+' · '+r4(c.qty)+' × '+m(c.rate),a:c.amt}))].sort((x,y)=>y.d.localeCompare(x.d));
+  const bycat={};rows.forEach(r=>{const c=r.k=='u'?'From stock':r.s.split(' · ')[0];bycat[c]=(bycat[c]||0)+r.a});
+  a.innerHTML='<button class="g" onclick="go(\'list\')">Back</button>'+
+  '<div class="row" style="margin-top:12px"><h1>'+esc(p.name)+'</h1><button class="g" onclick="projForm(P(\''+p.id+'\'))">Edit</button></div>'+
+  '<div class="mu">'+esc(p.status)+(p.ref?' · Ref: '+esc(p.ref):'')+'</div>'+
+  (p.tags||'').split(',').filter(t=>t.trim()).map(t=>'<span class="chip">'+esc(t.trim())+'</span>').join('')+
+  (p.desc?'<p>'+esc(p.desc)+'</p>':'')+
+  '<div class="card"><div class="mu">Total build cost</div><div class="big">'+m(cost)+'</div>'+
+  '<div class="mu">With '+p.margin+'% margin: <b>'+m(price)+'</b> (profit '+m(price-cost)+')</div>'+
+  '<div class="mu">'+Object.entries(bycat).map(([k,v])=>esc(k)+' '+m(v)).join(' · ')+'</div></div>'+
+  '<div class="btns"><button onclick="useForm(\''+p.id+'\')">Use stock</button><button onclick="useToolForm(\''+p.id+'\')">Use tool</button><button onclick="costForm(\''+p.id+'\')">Add cost</button><button class="g" onclick="billForm(P(\''+p.id+'\'))">Invoice</button></div>'+
+  '<h2>Costs</h2>'+(rows.map(r=>'<div class="card"><div class="row"><b>'+esc(r.t)+'</b><b>'+m(r.a)+'</b></div><div class="row"><span class="mu">'+esc(r.s)+' · '+esc(r.d)+'</span><button class="d" style="min-height:36px;padding:4px 10px" onclick="delEntry(\''+r.k+'\',\''+r.id+'\')">Delete</button></div></div>').join('')||'<p class="mu">No costs yet. Use stock or add a cost above.</p>')+
+  (db.bills.filter(b=>b.pid==p.id).length?'<h2>Invoices</h2>'+db.bills.filter(b=>b.pid==p.id).map(b=>'<div class="card tap" onclick="showBill(\''+b.id+'\')"><div class="row"><b>'+esc(b.no)+'</b><b>'+m(b.price)+'</b></div><div class="mu">'+esc(b.date)+' · '+st(b)+' · cost was '+m(b.cost)+'</div></div>').join(''):'')+
+  docsHTML('proj',p.id,p.name)+'<div class="btns" style="margin-top:28px"><button class="d" onclick="delProject(\''+p.id+'\')">Delete project</button></div>';docsRefresh('proj',p.id);
+}
+function saveSet(){db.set={...db.set,biz:$('#s1').value.trim(),prefix:($('#s2').value.trim()||'ART').replace(/[^A-Za-z0-9]/g,''),cur:$('#s3').value.trim()||'$',info:$('#s4').value.trim(),gst:parseFloat($('#s5').value)||0};save();toast('Settings saved')}
+async function imp(f){if(!f)return;const buf=await f.arrayBuffer(),u=new Uint8Array(buf);
+  if(u.length>36&&TD.decode(u.slice(0,4))=='BLX1'){
+    sheet('Encrypted export',[{k:'pw',l:'Export password',t:'password',req:1}],v=>{(async()=>{try{toast('Decrypting…');const z=await decryptBytes(v.pw,u);await impZip(z.buffer.slice(z.byteOffset,z.byteOffset+z.byteLength))}catch(e){toast('Wrong password or damaged file')}})();return true},'Decrypt and import');return}
+  if(/\.zip$/i.test(f.name)||(u[0]==0x50&&u[1]==0x4b))return impZip(buf);
+  try{const d=JSON.parse(TD.decode(u));if(!d.projects||!d.items)throw 0;if(confirm('Replace all current data with this backup?')){db=d;norm();save();go('list');toast('Backup restored')}}catch(e){toast('That file is not a valid backup')}}
+
+
 /* ---------- documents (stored on this device in IndexedDB) ---------- */
 let _idb;const idb=()=>_idb||(_idb=new Promise((res,rej)=>{const r=indexedDB.open('buildledger-docs',1);r.onupgradeneeded=()=>r.result.createObjectStore('blobs',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
 const tx=async(mode,fn)=>{const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('blobs',mode),q=fn(t.objectStore('blobs'));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)})};
@@ -551,6 +658,7 @@ async function loadPdf(){
   return true
 }
 function scanBtn(){const h=$('#sbody').querySelector('h2'),w=document.createElement('div');
+  w.innerHTML=`<button type="button" class="g" id="scbtn" style="width:100%;margin:8px 0">Scan details from a photo</button><input id="scin" type="file" accept="image/*" hidden><div class="mu" id="scst"></div>`;h.after(w);
   $('#scbtn').onclick=()=>$('#scin').click();
   $('#scin').onchange=async e=>{const f=e.target.files[0];if(!f)return;const st$=$('#scst');st$.textContent='Reading the photo. The first scan downloads the reader and needs internet.';
     try{await loadOcr();const r=await Tesseract.recognize(f,'eng'),o=parseDoc(r.data.text);
@@ -786,7 +894,7 @@ function showCodes(rc){$('#sbody').innerHTML=`<h2 style="margin-top:0">Save your
   <div class="btns"><button id="cpy" class="g">Copy codes</button><button id="scx">I have saved them</button></div>`;
   $('#sheet').classList.add('open');$('#scx').onclick=close;$('#cpy').onclick=async()=>toast(await copyText(rc.join('\n'))?'Copied':'Copying is blocked here. Select the codes and copy them manually.')}
 function twofaOff(){sheet('Turn off two-factor authentication',[{k:'code',l:'Current 6-digit code or a recovery code',req:1}],
-  v=>{(async()=>{const ok=/^\d{6}$/.test(c.replace(/\s/g,''))?await checkCode(c):await checkRecovery(c);if(!ok){toast('That code did not match');return}AUTH.totp=null;AUTH.rec=[];save();close();render();toast('Two-factor turned off')})();return false},'Turn off')}
+  v=>{(async()=>{const ok=/^\d{6}$/.test(v.code.replace(/\s/g,''))?await checkCode(v.code):await checkRecovery(v.code);if(!ok){toast('That code did not match');return}AUTH.totp=null;AUTH.rec=[];save();close();render();toast('Two-factor turned off')})();return false},'Turn off')}
 ['pointerdown','keydown','touchstart','scroll'].forEach(e=>addEventListener(e,()=>{_last=Date.now()},{passive:true,capture:true}));
 setInterval(()=>{if(KEY&&AUTH&&Date.now()-_last>(AUTH.auto||5)*60000)lock()},10000);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();else if(KEY&&AUTH&&Date.now()-_last>(AUTH.auto||5)*60000)lock()});
