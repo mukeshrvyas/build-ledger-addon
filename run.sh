@@ -1,3 +1,3 @@
 #!/bin/bash
-cd /app/www
+cd /local_apps/build-ledger/www
 exec python3 server.py

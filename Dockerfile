@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY www/ /local-apps/build-ledger/
+COPY www/ /local_apps/build-ledger/
 
 EXPOSE 8099
 

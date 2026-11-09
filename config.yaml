@@ -13,7 +13,7 @@ options:
   server_url: ""
   app_name: "Build Ledger"
   apk_enabled: true
-  apk_path: "/app/www/apk/build-ledger.apk"
+  apk_path: "/local_apps/build-ledger/www/apk/build-ledger.apk"
 schema:
   server_url: str
   app_name: str
