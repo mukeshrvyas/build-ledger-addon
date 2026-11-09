@@ -79,7 +79,7 @@ function flush(){clearTimeout(_t);if(!KEY||!AUTH)return _busy;const k=KEY,m=META
       const vaultJson=JSON.stringify(vault);
       await sqlSaveVault(vaultJson);
       localStorage.setItem(VK,vaultJson);
-    }catch(e){toast('Could not save: storage is full or blocked')}
+    }catch(e){console.error(e);toast('Save error: '+(e.name||e.message||e))}
   }).then(async()=>{
     if(SYNC_ONLINE&&SYNC_URL&&!db.set.syncLocal){try{await syncPush()}catch(e){}}
   });return _busy}
